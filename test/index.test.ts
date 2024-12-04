@@ -1,44 +1,26 @@
-import "reflect-metadata";
-import { createCookieSessionStorage, Request } from "@remix-run/node";
-// import * as jwt from "jsonwebtoken-esm";
-import { AuthenticateOptions, AuthorizationError } from "remix-auth";
-import { container } from "tsyringe";
 import { JwtStrategy, JwtStrategyVerifyParams } from "../src";
-import { JsonwebtokenService } from "../src/core/service/jsonwebtoken/JsonwebtokenService";
-import { jsonwebtokenModule } from "../src/core/service/di/JsonwebtokenModule";
-import { Algorithm } from "jsonwebtoken";
-
-const BASE_OPTIONS: AuthenticateOptions = {
-  name: "form",
-  sessionKey: "user",
-  sessionErrorKey: "error",
-  sessionStrategyKey: "strategy",
-};
-
-jsonwebtokenModule();
+import jsonwebtoken from "jsonwebtoken";
 
 describe(JwtStrategy, () => {
   let verify = jest.fn();
-  // You will probably need a sessionStorage to test the strategy.
-  let sessionStorage = createCookieSessionStorage({
-    cookie: { secrets: ["s3cr3t"] },
-  });
 
   const secret = "s3cr3t";
   let options = Object.freeze({
     secret,
-    algorithms: ["HS256"] as Algorithm[],
+    algorithms: ["HS256"] as jsonwebtoken.Algorithm[],
+    getPayload: () => {
+      return { username: "example@example.com" };
+    },
   });
 
-  const payload = { username: "example@example.com" };
+  let payload = options.getPayload();
   let token: string;
   interface User {
     id: string;
   }
 
   beforeAll(async () => {
-    const jwt = container.resolve<JsonwebtokenService>("JsonwebtokenService");
-    token = jwt.sign(payload, secret);
+    token = jsonwebtoken.sign(payload, secret);
   });
 
   beforeEach(() => {
@@ -50,7 +32,7 @@ describe(JwtStrategy, () => {
     expect(strategy.name).toBe("jwt");
   });
 
-  test("should pass the payload and the context to the verify callback", async () => {
+  test("should pass the payload, request and token to the verify callback", async () => {
     let strategy = new JwtStrategy<User>(options, verify);
 
     // create request with Authorization header with bearer token
@@ -60,21 +42,19 @@ describe(JwtStrategy, () => {
       },
     });
 
-    await strategy.authenticate(request, sessionStorage, {
-      ...BASE_OPTIONS,
-    });
-    expect(verify).toBeCalledWith({
-      payload: {
-        ...payload,
-        iat: expect.any(Number),
-      },
-    });
+    await strategy.authenticate(request);
+    expect(verify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.anything(),
+        token: expect.anything(),
+      })
+    );
   });
 
   test("should return what the verify callback returned", async () => {
     verify.mockImplementationOnce(
       async ({ payload }: JwtStrategyVerifyParams) => {
-        return payload["username"];
+        return payload;
       }
     );
 
@@ -84,66 +64,35 @@ describe(JwtStrategy, () => {
       },
     });
 
-    let context = { test: "it works!" };
-
     let strategy = new JwtStrategy<User>(options, verify);
 
-    const user = await strategy.authenticate(request, sessionStorage, {
-      ...BASE_OPTIONS,
-      context,
-    });
+    const user = await strategy.authenticate(request);
 
-    expect(user).toBe(payload.username);
-  });
-
-  test("should pass the context to the verify callback", async () => {
-    let request = new Request("http://localhost:3000", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    let context = { test: "it works!" };
-
-    let strategy = new JwtStrategy<User>(options, verify);
-
-    await strategy.authenticate(request, sessionStorage, {
-      ...BASE_OPTIONS,
-      context,
-    });
-    expect(verify).toBeCalledWith({
-      payload: {
-        ...payload,
+    expect(user).toEqual(
+      expect.objectContaining({
         iat: expect.any(Number),
-      },
-      context,
-    });
+        token: expect.anything(),
+        username: "example@example.com",
+      })
+    );
   });
 
-  test("should pass token returned by getToken function to verify function", async () => {
+  test("should pass token to verify callback", async () => {
     const request = new Request("http://localhost:3000", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
-    const strategy = new JwtStrategy<User>(
-      {
-        ...options,
-        getToken: (req) => req.headers.get("Authorization")?.split(" ")[1],
-      },
-      verify
-    );
+    const strategy = new JwtStrategy<User>(options, verify);
 
-    await strategy.authenticate(request, sessionStorage, {
-      ...BASE_OPTIONS,
-    });
-    expect(verify).toBeCalledWith({
-      payload: {
-        ...payload,
-        iat: expect.any(Number),
-      },
-    });
+    await strategy.authenticate(request);
+    expect(verify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.anything(),
+        token: expect.anything(),
+      })
+    );
   });
 
   test("should pass error as cause on failure", async () => {
@@ -158,17 +107,9 @@ describe(JwtStrategy, () => {
     });
     let strategy = new JwtStrategy<User>(options, verify);
 
-    let result = await strategy
-      .authenticate(request, sessionStorage, {
-        ...BASE_OPTIONS,
-        throwOnError: true,
-      })
-      .catch((error) => error);
+    let result = await strategy.authenticate(request).catch((error) => error);
 
-    expect(result).toEqual(new AuthorizationError("Invalid bearer token"));
-    expect((result as AuthorizationError).cause).toEqual(
-      new TypeError("Invalid bearer token")
-    );
+    expect(result).toEqual(new Error("Invalid bearer token"));
   });
 
   test("should pass generate error from string on failure", async () => {
@@ -183,17 +124,9 @@ describe(JwtStrategy, () => {
     });
     let strategy = new JwtStrategy<User>(options, verify);
 
-    let result = await strategy
-      .authenticate(request, sessionStorage, {
-        ...BASE_OPTIONS,
-        throwOnError: true,
-      })
-      .catch((error) => error);
+    let result = await strategy.authenticate(request).catch((error) => error);
 
-    expect(result).toEqual(new AuthorizationError("Invalid bearer token"));
-    expect((result as AuthorizationError).cause).toEqual(
-      new TypeError("Invalid bearer token")
-    );
+    expect(result).toEqual(new Error("Invalid bearer token"));
   });
 
   test("should create Unknown error if thrown value is not Error or string", async () => {
@@ -208,46 +141,24 @@ describe(JwtStrategy, () => {
     });
     let strategy = new JwtStrategy<User>(options, verify);
 
-    let result = await strategy
-      .authenticate(request, sessionStorage, {
-        ...BASE_OPTIONS,
-        throwOnError: true,
-      })
-      .catch((error) => error);
+    let result = await strategy.authenticate(request).catch((error) => error);
 
-    expect(result).toEqual(new AuthorizationError("Unknown error"));
-    expect((result as AuthorizationError).cause).toEqual(
-      new Error(JSON.stringify({ message: "Invalid bearer token" }, null, 2))
-    );
+    expect(result).toEqual(new Error("Unknown error"));
   });
 
-  test("should raise an error if getToken returns undefined", async () => {
-    const request = new Request("http://localhost:3000", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+  test("should raise an error if getPayload returns undefined", async () => {
+    const request = new Request("http://localhost:3000");
     const strategy = new JwtStrategy<User>(
       {
-        ...options,
-        getToken: () => {
-          // eslint-disable-next-line unicorn/no-useless-undefined
+        secret: "test",
+        algorithms: ["HS256"] as jsonwebtoken.Algorithm[],
+        getPayload: () => {
           return undefined;
         },
       },
       verify
     );
-    const result = await strategy
-      .authenticate(request, sessionStorage, {
-        ...BASE_OPTIONS,
-        throwOnError: true,
-      })
-      .catch((error) => error);
-    expect(result).toEqual(
-      new AuthorizationError("Format is Authorization: Bearer [token]")
-    );
-    expect((result as AuthorizationError).cause).toEqual(
-      new Error("Format is Authorization: Bearer [token]")
-    );
+    const result = await strategy.authenticate(request).catch((error) => error);
+    expect(result).toEqual(new Error("getPayload returns undefined!"));
   });
 });
