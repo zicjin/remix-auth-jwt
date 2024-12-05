@@ -11,54 +11,21 @@ In other words, when Remix is used as an API-only application, this strategy com
 
 ## Supported runtimes
 
-| Runtime    | Has Support |
-| ---------- | ----------- |
-| Node.js    | ✅           |
-| Cloudflare | ✅           |
+| Runtime | Has Support |
+| ------- | ----------- |
+| Node.js | ✅          |
 
-This strategy has been tested to work with Node.js as well as with Cloudflare workers.
-
-Run the following command to obtain a token to verify that this strategy works with Cloudflare workers.
-
-```shell
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"username": "example@example.com" }' \
-  https://remix-auth-jwt.takagimeow.workers.dev/create-token
-```
-
-```json
-{
-  "success": true,
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImV4YW1wbGVAZXhhbXBsZS5jb20iLCJpYXQiOjE2NzY4NjgxMTl9.lQj4xzTxx26jL6AKH-1qpEgKuLCgZqXOrsHcRPGK6tM"
-}
-```
-
-Then run the following command to verify that you can authenticate with this token.
-
-```shell
-curl -X GET \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImV4YW1wbGVAZXhhbXBsZS5jb20iLCJpYXQiOjE2NzY4NjgxMTl9.lQj4xzTxx26jL6AKH-1qpEgKuLCgZqXOrsHcRPGK6tM" \
-  https://remix-auth-jwt.takagimeow.workers.dev/authenticate-required
-```
-
-```json
-{ "success": true, "username": "example@example.com", "iat": 1676868119 }
-```
-
-Check out [this repository](https://github.com/takagimeow/remix-auth-jwt-cloudflare-workers) to learn how to implement this strategy for the applications you want to run on Cloudflare Workers.
-
-<!-- If it doesn't support one runtime, explain here why -->
+This strategy has been tested to work with Node.js.
 
 ## API
 
 The parameter passed as the first argument when this strategy class is initialized contains the following:
 
-| Name       | Type                                                                   | Description                                         |
-| ---------- | ---------------------------------------------------------------------- | --------------------------------------------------- |
-| secret     | string                                                                 | The secret used to sign the token.                  |
-| algorithms | Algorithm[]                                                            | The algorithms used to sign the token.              |
-| getToken?  | (req: Request) => string \| undefined \| Promise<string \| undefined>; | A function that returns the token from the request. |
+| Name       | Type                      | Description                            |
+| ---------- | ------------------------- | -------------------------------------- | -------------------------------------------- |
+| secret     | string                    | The secret used to sign the token.     |
+| algorithms | Algorithm[]               | The algorithms used to sign the token. |
+| getPayload | (request: Request) => any | Promise<any>;                          | A function that returns the payload to sign. |
 
 ## How to use
 
@@ -67,7 +34,7 @@ The parameter passed as the first argument when this strategy class is initializ
 First, install the strategy, jsonwebtoken@8.5.1, jsonwebtoken-esm@1.0.5 and Remix Auth.
 
 ```bash
-$ npm install remix-auth remix-auth-jwt jsonwebtoken@8.5.1 jsonwebtoken-esm@1.0.5
+$ npm install remix-auth remix-auth-jwt jsonwebtoken@8.5.1
 ```
 
 Then, create an Authenticator instance.
@@ -77,9 +44,7 @@ Then, create an Authenticator instance.
 import { Authenticator } from "remix-auth";
 import { sessionStorage } from "~/session.server";
 
-export let authenticator = new Authenticator<{ requestname: string }>(
-  sessionStorage
-);
+export let authenticator = new Authenticator<AuthData>();
 ```
 
 And you can tell the authenticator to use the JwtStrategy.
@@ -94,11 +59,15 @@ authenticator.use(
     {
       secret: "s3cr3t",
       algorithms: ["HS256"] as Algorithm[],
+      getPayload: (request: Request) => {
+        // Get username and password from the request
+        // Body, params, etc.
+        return { username, password };
+      }
     },
     // Define what to do when the request is authenticated
-    async ({ payload, context }) => {
-      // You can access decoded token values here using payload
-      // and also use `context` to access more things from the server
+    async ({ payload, request, token }) => {
+      // You can access decoded token values here using payload      
       return payload;
     }
   ),
@@ -114,8 +83,6 @@ import { LoaderArgs } from "@remix-run/server-runtime";
 import { authenticator } from "~/auth.server";
 
 export async function loader({ params, request }: LoaderArgs) {
-  const result = await authenticator.authenticate("jwt", request);
-  return result;
   try {
     const result = await authenticator.authenticate("jwt", request);
     /* handle success */
