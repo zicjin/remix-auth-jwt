@@ -1,12 +1,12 @@
 {
-  "name": "@javier.alejandro.castro/remix-auth-jwt",
+  "name": "remix-auth-jwt",
   "version": "0.5.0",
   "main": "./build/index.js",
   "types": "./build/index.d.ts",
   "author": {
-    "name": "jacargentina",
-    "email": "javier.alejandro.castro@gmail.com",
-    "url": "https://github.com/jacargentina"
+    "name": "zicjin",
+    "email": "zicjin@gmail.com",
+    "url": "https://github.com/zicjin/remix-auth-jwt"
   },
   "type": "module",
   "description": "A Remix Auth strategy for working with JWT",
