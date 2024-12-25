@@ -38,7 +38,7 @@
   },
   "homepage": "https://github.com/jacargentina/remix-auth-jwt",
   "peerDependencies": {
-    "@remix-run/server-runtime": "^1.0.0"
+    "@remix-run/server-runtime": "^2.15.0"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
